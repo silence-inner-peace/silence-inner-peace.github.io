@@ -1,0 +1,766 @@
+<!doctype html>
+
+
+
+  
+
+
+<html class="theme-next pisces use-motion" lang="zh-cn">
+<head><meta name="generator" content="Hexo 3.9.0">
+  <meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform">
+<meta http-equiv="Cache-Control" content="no-siteapp">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  <link href="/lib/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css">
+
+
+
+
+  
+  
+  
+  
+
+  
+    
+    
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+    
+    
+    <link href="//fonts.googleapis.com/css?family=Lato:300,300italic,400,400italic,700,700italic&subset=latin,latin-ext" rel="stylesheet" type="text/css">
+  
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css">
+
+<link href="/css/main.css?v=5.1.1" rel="stylesheet" type="text/css">
+
+
+  <meta name="keywords" content="CUDPP,">
+
+
+
+
+
+
+
+
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=5.1.1">
+
+
+
+
+
+
+<meta name="description" content="算法目标根据原图像值，在两个相邻分块的标记值中寻找要合并的标记，并将其分别存放在father和child两个数组中。寻找8连通的合并对，其实就是以第一行为核心按照如下模板进行遍历，如果图像pixel的原值相同，就说明这两个pixel所在的标记应该合并，就将上一行计入father数组，将下一行计入child数组。">
+<meta name="keywords" content="CUDPP">
+<meta property="og:type" content="article">
+<meta property="og:title" content="findMerge的CUDA实现">
+<meta property="og:url" content="https://silence-inner-peace.github.io/2018/05/19/findMerge的CUDA实现/index.html">
+<meta property="og:site_name" content="学思考的小孩儿">
+<meta property="og:description" content="算法目标根据原图像值，在两个相邻分块的标记值中寻找要合并的标记，并将其分别存放在father和child两个数组中。寻找8连通的合并对，其实就是以第一行为核心按照如下模板进行遍历，如果图像pixel的原值相同，就说明这两个pixel所在的标记应该合并，就将上一行计入father数组，将下一行计入child数组。">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:image" content="https://silence-inner-peace.github.io/2018/05/19/findMerge的CUDA实现/1.png">
+<meta property="og:image" content="https://silence-inner-peace.github.io/2018/05/19/findMerge的CUDA实现/2.png">
+<meta property="og:image" content="https://silence-inner-peace.github.io/2018/05/19/findMerge的CUDA实现/3.png">
+<meta property="og:updated_time" content="2019-02-23T13:09:42.000Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="findMerge的CUDA实现">
+<meta name="twitter:description" content="算法目标根据原图像值，在两个相邻分块的标记值中寻找要合并的标记，并将其分别存放在father和child两个数组中。寻找8连通的合并对，其实就是以第一行为核心按照如下模板进行遍历，如果图像pixel的原值相同，就说明这两个pixel所在的标记应该合并，就将上一行计入father数组，将下一行计入child数组。">
+<meta name="twitter:image" content="https://silence-inner-peace.github.io/2018/05/19/findMerge的CUDA实现/1.png">
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Pisces',
+    sidebar: {"position":"left","display":"post","offset":12,"offset_float":0,"b2t":false,"scrollpercent":false},
+    fancybox: true,
+    motion: true,
+    duoshuo: {
+      userId: '0',
+      author: 'Author'
+    },
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+
+  <link rel="canonical" href="https://silence-inner-peace.github.io/2018/05/19/findMerge的CUDA实现/">
+
+
+
+
+
+  <title>findMerge的CUDA实现 | 学思考的小孩儿</title>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-cn">
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    
+  
+
+  
+  <div class="container sidebar-position-left page-post-detail ">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">学思考的小孩儿</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle"></p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-home"></i> <br>
+            
+            Home
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-archive"></i> <br>
+            
+            Archives
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-categories">
+          <a href="/categories" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-th"></i> <br>
+            
+            Categories
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-tags">
+          <a href="/tags" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-tags"></i> <br>
+            
+            Tags
+          </a>
+        </li>
+      
+
+      
+    </ul>
+  
+
+  
+</nav>
+
+
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal " itemscope itemtype="http://schema.org/Article">
+    <link itemprop="mainEntityOfPage" href="https://silence-inner-peace.github.io/2018/05/19/findMerge的CUDA实现/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content>
+      <meta itemprop="description" content>
+      <meta itemprop="image" content="/image/fly.jpg">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="学思考的小孩儿">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">findMerge的CUDA实现</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">Posted on</span>
+              
+              <time title="Post created" itemprop="dateCreated datePublished" datetime="2018-05-19T10:07:37+08:00">
+                2018-05-19
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <script src="/assets/js/APlayer.min.js"> </script><h3 id="算法目标"><a href="#算法目标" class="headerlink" title="算法目标"></a>算法目标</h3><p>根据原图像值，在两个相邻分块的标记值中寻找要合并的标记，并将其分别存放在father和child两个数组中。寻找8连通的合并对，其实就是以第一行为核心按照如下模板进行遍历，如果图像pixel的原值相同，就说明这两个pixel所在的标记应该合并，就将上一行计入father数组，将下一行计入child数组。</p>
+<a id="more"></a>
+<p><img src="/2018/05/19/findMerge的CUDA实现/1.png" alt="图片"><br>例如：<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">input：</span><br><span class="line">    const int width = 5;</span><br><span class="line">    int h_rowOneValue[width] = &#123; 1, 1, 2, 1, 3 &#125;;</span><br><span class="line">    int h_rowTwoValue[width] = &#123; 4, 1, 1, 1, 1 &#125;;</span><br><span class="line"></span><br><span class="line">    int h_rowOneLabel[width] = &#123; 1, 1, 4, 2, 5 &#125;;</span><br><span class="line">    int h_rowTwoLabel[width] = &#123; 6, 3, 3, 3, 3 &#125;;</span><br><span class="line"></span><br><span class="line">output</span><br><span class="line">  father &#123;1，2&#125;</span><br><span class="line">  child  &#123;3，3&#125;</span><br></pre></td></tr></table></figure></p>
+<h3 id="CUDA并行算法思想"><a href="#CUDA并行算法思想" class="headerlink" title="CUDA并行算法思想"></a>CUDA并行算法思想</h3><p>将每个pixel映射到一个CUDA线程上，将可能要合并的pair先都存储，然后将重复项和无效项去除。以上面的例子作为输入来说明，首先会产生一个3倍于原输入大小的father和child，因为每个线程都要对应遍历模板产生3个输出。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">father &#123;-1，-1，1，  -1，1，1，  -1，-1，-1，  2，2，2，  -1，-1，-1&#125;</span><br><span class="line">child  &#123;-1，-1，3，  -1，3，3，  -1，-1，-1，  3，3，3，  -1，-1，-1&#125;</span><br><span class="line">IsValid&#123; 0， 0，1，   0，0，0，   0， 0， 0，  1，0，0，   0， 0， 0&#125;</span><br></pre></td></tr></table></figure></p>
+<p>然后用CUDPP compact 操作根据中间数组IsValid将无效项（-1，-1）和重复项（1,3）（2,3）去掉。<br>最终输出<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">father &#123;1，2&#125;</span><br><span class="line">child  &#123;3，3&#125;</span><br></pre></td></tr></table></figure></p>
+<h3 id="程序实现过程中遇到的问题"><a href="#程序实现过程中遇到的问题" class="headerlink" title="程序实现过程中遇到的问题"></a>程序实现过程中遇到的问题</h3><p>一、怎样在一个函数中再调用另外的函数对传进来的表示数组的指针申请内存空间并进行修改赋值等操作。<br>之前的经验告诉我，要在一个函数内申请内存空间并使得赋值有效传回，得传递双指针。脑子里有指针传递和值传递这个概念，但一直不是很清晰，对函数的调用机制也不清晰。下面就来搞清楚这中间到底发生了什么。<br>指针就是一个变量，存放的是地址，也是一个值而已。函数参数的传递实际上是一个拷贝的过程。以前是在被调用的函数中改变调用者中实参的值，用指向实参的指针传值就可以，现在，要在被调用函数中改变指针的指向，就要用指向指针的指针（双重指针）。在被调用函数中*<em>ptr代表指针指向的值，</em>ptr代表指针，ptr代表指针的指针就是指针的地址。<br><img src="/2018/05/19/findMerge的CUDA实现/2.png" alt="图片"><br>其实在函数传递中我们只是将指针的地址复制了过来，但是这个地址仍然指向这个指针。所以当需要嵌套的在函数中传递一个数组，并要在最内层的函数调用中申请数组空间或修改数组的值的时候，要将指针的指针作为函数的参数传递，这样每次向内层的调用都会复制指针的地址，修改指针指向的地址中的值。</p>
+<p>二、怎样让一个线程调用另外一个核函数，我使用了<strong>device</strong>函数，但是启动失败。这个问题待解决</p>
+<p>三、遇到CUDA 的报错 invalid device function.<br>cudpp中可能用到了比较高级的函数，必须要用计算能力大于3.5的显卡，并且在编译的时候设置 -arch=sm_35.原因是有些特性在低端的机器上是不支持的，需要指明显卡的计算能力。所以首先你得知道自己的显卡的计算能力，在编译的时候将-arch改为与自己的显卡相匹配的数值。</p>
+<h3 id="并行算法实现"><a href="#并行算法实现" class="headerlink" title="并行算法实现"></a>并行算法实现</h3><p>在实现中将原先的数组前后各添加一个无效项，避免边界处理操作。然后对每个线程使用模板，将产生的pair存放于father和child，然后得到IsValid数组，最后去重得到有效的pair。<br>每个线程产生的pair的存放位置如下:<br><img src="/2018/05/19/findMerge的CUDA实现/3.png" alt="图片"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br><span class="line">228</span><br><span class="line">229</span><br><span class="line">230</span><br><span class="line">231</span><br><span class="line">232</span><br><span class="line">233</span><br><span class="line">234</span><br><span class="line">235</span><br><span class="line">236</span><br><span class="line">237</span><br><span class="line">238</span><br><span class="line">239</span><br><span class="line">240</span><br><span class="line">241</span><br><span class="line">242</span><br><span class="line">243</span><br><span class="line">244</span><br><span class="line">245</span><br><span class="line">246</span><br><span class="line">247</span><br><span class="line">248</span><br><span class="line">249</span><br><span class="line">250</span><br><span class="line">251</span><br><span class="line">252</span><br><span class="line">253</span><br><span class="line">254</span><br><span class="line">255</span><br><span class="line">256</span><br><span class="line">257</span><br><span class="line">258</span><br><span class="line">259</span><br><span class="line">260</span><br><span class="line">261</span><br><span class="line">262</span><br><span class="line">263</span><br><span class="line">264</span><br><span class="line">265</span><br><span class="line">266</span><br><span class="line">267</span><br><span class="line">268</span><br><span class="line">269</span><br><span class="line">270</span><br><span class="line">271</span><br><span class="line">272</span><br><span class="line">273</span><br><span class="line">274</span><br><span class="line">275</span><br><span class="line">276</span><br><span class="line">277</span><br><span class="line">278</span><br><span class="line">279</span><br><span class="line">280</span><br><span class="line">281</span><br><span class="line">282</span><br><span class="line">283</span><br><span class="line">284</span><br><span class="line">285</span><br><span class="line">286</span><br><span class="line">287</span><br><span class="line">288</span><br><span class="line">289</span><br><span class="line">290</span><br><span class="line">291</span><br><span class="line">292</span><br><span class="line">293</span><br><span class="line">294</span><br><span class="line">295</span><br><span class="line">296</span><br><span class="line">297</span><br><span class="line">298</span><br><span class="line">299</span><br><span class="line">300</span><br><span class="line">301</span><br><span class="line">302</span><br><span class="line">303</span><br><span class="line">304</span><br><span class="line">305</span><br></pre></td><td class="code"><pre><span class="line">#include &quot;cuda_runtime.h&quot;</span><br><span class="line">#include &quot;device_launch_parameters.h&quot;</span><br><span class="line"></span><br><span class="line">#include &lt;stdio.h&gt;</span><br><span class="line">#include &quot;cudpp.h&quot;</span><br><span class="line">#include &quot;cudpp_hash.h&quot;</span><br><span class="line"></span><br><span class="line">__global__ void getFatherAndChild(int* d_rowOneValue, int* d_rowTwoValue, int* d_rowOneLabel, int* d_rowTwoLabel, int width,</span><br><span class="line">                                 int* d_father, int* d_child)</span><br><span class="line">&#123;</span><br><span class="line">    const int tid = threadIdx.x;</span><br><span class="line">    int gid = blockIdx.x * blockDim.x + tid;</span><br><span class="line">    /*//gid是针对于第一行的</span><br><span class="line">    要遍历的模板是下面这种</span><br><span class="line">         A</span><br><span class="line">    A   A   A</span><br><span class="line">    */</span><br><span class="line">    //将原先的数组前后各添加一个无效项，避免边界处理操作</span><br><span class="line">    if ((gid == 0) || (gid == width+1))</span><br><span class="line">    &#123;</span><br><span class="line">        d_rowOneValue[gid] = -1;</span><br><span class="line">        d_rowTwoValue[gid] = -1;</span><br><span class="line">        d_rowOneLabel[gid] = -1;</span><br><span class="line">        d_rowTwoLabel[gid] = -1;</span><br><span class="line">    &#125;</span><br><span class="line">    if ((gid &gt; 0) &amp;&amp; (gid &lt; width+1))</span><br><span class="line">    &#123;</span><br><span class="line">        if (d_rowOneValue[gid] == d_rowTwoValue[gid - 1])</span><br><span class="line">        &#123;</span><br><span class="line">            d_father[3 * (gid - 1)] = d_rowOneLabel[gid];</span><br><span class="line">            d_child[3 * (gid - 1)] = d_rowTwoLabel[gid - 1];</span><br><span class="line">        &#125;</span><br><span class="line">        else</span><br><span class="line">        &#123;</span><br><span class="line">            d_father[3 * (gid - 1)] = -1;</span><br><span class="line">            d_child[3 * (gid - 1)] = -1;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        if (d_rowOneValue[gid] == d_rowTwoValue[gid])</span><br><span class="line">        &#123;</span><br><span class="line">            d_father[3 * (gid - 1) + 1] = d_rowOneLabel[gid];</span><br><span class="line">            d_child[3 * (gid - 1) + 1] = d_rowTwoLabel[gid];</span><br><span class="line">        &#125;</span><br><span class="line">        else</span><br><span class="line">        &#123;</span><br><span class="line">            d_father[3 * (gid - 1) + 1] = -1;</span><br><span class="line">            d_child[3 * (gid - 1) + 1] = -1;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        if (d_rowOneValue[gid] == d_rowTwoValue[gid + 1])</span><br><span class="line">        &#123;</span><br><span class="line">            d_father[3 * (gid - 1) + 2] = d_rowOneLabel[gid];</span><br><span class="line">            d_child[3 * (gid - 1) + 2] = d_rowTwoLabel[gid + 1];</span><br><span class="line">        &#125;</span><br><span class="line">        else</span><br><span class="line">        &#123;</span><br><span class="line">            d_father[3 * (gid - 1) + 2] = -1;</span><br><span class="line">            d_child[3 * (gid - 1) + 2] = -1;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">__device__ void reLabelRepeatItem(int* d_father, int* d_child, int currentId)</span><br><span class="line">&#123;</span><br><span class="line">    const int tid = threadIdx.x;</span><br><span class="line">    int gid = blockIdx.x * blockDim.x + tid;</span><br><span class="line">    if ((gid &lt; currentId) &amp;&amp; (d_father[gid] == d_father[currentId]) &amp;&amp; (d_child[gid] == d_child[currentId]))</span><br><span class="line">    &#123;</span><br><span class="line">        d_father[currentId] = -1;</span><br><span class="line">        d_child[currentId] = -1;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line">__global__ void getIsvalid(int* d_father, int* d_child, unsigned int* d_isValid, int N, int numThreads, int numBlocks)</span><br><span class="line">&#123;</span><br><span class="line">    const int tid = threadIdx.x;</span><br><span class="line">    int gid = blockIdx.x * blockDim.x + tid;</span><br><span class="line">    int currentId;</span><br><span class="line">    if (gid &lt; N)</span><br><span class="line">    &#123;</span><br><span class="line">        currentId = gid;</span><br><span class="line">        int i = 0;</span><br><span class="line">        for (i = currentId - 1; i &gt;= 0; i--)</span><br><span class="line">        &#123;</span><br><span class="line">            if ((d_father[i] == d_father[currentId]) &amp;&amp; (d_child[i] == d_child[currentId]))</span><br><span class="line">            &#123;</span><br><span class="line">                d_father[currentId] = -1;</span><br><span class="line">                d_child[currentId] = -1;</span><br><span class="line">                break;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        //reLabelRepeatItem &lt;&lt; &lt;numBlocks, numThreads &gt;&gt; &gt;(d_father, d_child, currentId);</span><br><span class="line">    &#125;</span><br><span class="line">    __syncthreads();</span><br><span class="line">    if (gid &lt; N)</span><br><span class="line">    &#123;</span><br><span class="line">        if (d_father[gid] &gt; 0)</span><br><span class="line">        &#123;</span><br><span class="line">            d_isValid[gid] = 1;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">size_t compactArray(int* d_Val, unsigned int* d_isValid, int totalNum, CUDPPHandle&amp; compactplan,</span><br><span class="line">    int** h_ValValid)</span><br><span class="line">&#123;</span><br><span class="line">    int memSize = sizeof(int)* totalNum;</span><br><span class="line">    </span><br><span class="line">    size_t* d_numValid = NULL;</span><br><span class="line">    cudaMalloc((void**)&amp;d_numValid, sizeof(size_t));</span><br><span class="line">    int *d_ValValid;</span><br><span class="line">    cudaMalloc((void**)&amp;d_ValValid, memSize);</span><br><span class="line">    cudaMemset(d_ValValid, 0, memSize);</span><br><span class="line"></span><br><span class="line">    // Run the compact</span><br><span class="line">    CUDPPResult res = cudppCompact(compactplan, d_ValValid, d_numValid, d_Val, d_isValid, totalNum);</span><br><span class="line">    if (CUDPP_SUCCESS != res)</span><br><span class="line">    &#123;</span><br><span class="line">        printf(&quot;Error in cudppScan()\n&quot;);</span><br><span class="line">        exit(-1);</span><br><span class="line">    &#125;</span><br><span class="line">    size_t h_numValidElements = 0;</span><br><span class="line">    cudaMemcpy(&amp;h_numValidElements, d_numValid, sizeof(size_t), cudaMemcpyDeviceToHost);</span><br><span class="line"></span><br><span class="line">    *h_ValValid = (int*)malloc(sizeof(int)*h_numValidElements);</span><br><span class="line">    cudaMemcpy(*h_ValValid, d_ValValid, sizeof(int)*h_numValidElements, cudaMemcpyDeviceToHost);</span><br><span class="line"></span><br><span class="line">    cudaFree(d_numValid);</span><br><span class="line">    cudaFree(d_ValValid);</span><br><span class="line">    return h_numValidElements;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"></span><br><span class="line">size_t compactFatherAndChild(int* d_father, int* d_child, unsigned int* d_isValid, int totalNum,</span><br><span class="line">                            int** h_fatherValid, int** h_childValid)</span><br><span class="line">&#123;</span><br><span class="line">    CUDPPHandle cudppForCompact;</span><br><span class="line">    cudppCreate(&amp;cudppForCompact);</span><br><span class="line"></span><br><span class="line">    CUDPPConfiguration compactConfig;</span><br><span class="line">    compactConfig.datatype = CUDPP_INT;</span><br><span class="line">    compactConfig.algorithm = CUDPP_COMPACT;</span><br><span class="line">    compactConfig.options = CUDPP_OPTION_FORWARD | CUDPP_OPTION_EXCLUSIVE;</span><br><span class="line">    </span><br><span class="line">    CUDPPHandle compactplan = 0;</span><br><span class="line">    CUDPPResult res = cudppPlan(cudppForCompact, &amp;compactplan, compactConfig, totalNum, 1, 0);</span><br><span class="line">    if (CUDPP_SUCCESS != res)</span><br><span class="line">    &#123;</span><br><span class="line">        printf(&quot;Error creating CUDPPPlan\n&quot;);</span><br><span class="line">        exit(-1);</span><br><span class="line">    &#125;</span><br><span class="line">    compactArray(d_father, d_isValid, totalNum, compactplan, h_fatherValid);</span><br><span class="line">    size_t h_numValidElements = compactArray(d_child, d_isValid, totalNum, compactplan, h_childValid);</span><br><span class="line">    </span><br><span class="line">    cudppDestroy(cudppForCompact);</span><br><span class="line">    cudppDestroyPlan(compactplan);</span><br><span class="line">    </span><br><span class="line">    return h_numValidElements;</span><br><span class="line">&#125;</span><br><span class="line">void checkDeviceArrayOfTypeInt(int* d_val, int length, char* name)</span><br><span class="line">&#123;</span><br><span class="line">    int memSize = sizeof(int)*length;</span><br><span class="line">    int *h_val = (int*)malloc(memSize);</span><br><span class="line">    cudaMemcpy(h_val, d_val, memSize, cudaMemcpyDeviceToHost);</span><br><span class="line">    printf(&quot;%s:\n&quot;,name);</span><br><span class="line">    int i = 0;</span><br><span class="line">    for (i = 0; i &lt; length; i++)</span><br><span class="line">    &#123;</span><br><span class="line">        printf(&quot;%d\t&quot;, h_val[i]);</span><br><span class="line">    &#125;</span><br><span class="line">    printf(&quot;\n&quot;);</span><br><span class="line">    free(h_val);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">size_t findMergeFunc(int* h_rowOneValue, int* h_rowTwoValue, int* h_rowOneLabel, int* h_rowTwoLabel, int width, int numThreads, int numBlocks,</span><br><span class="line">    int** h_fatherValid, int** h_childValid)</span><br><span class="line">&#123;</span><br><span class="line">    int memSize = sizeof(int)* (width + 2);//这里设置数组长度为width+2是为了在前后都加一个无效项，避免边界处理操作</span><br><span class="line">    </span><br><span class="line">    int *d_rowOneValue = NULL;</span><br><span class="line">    cudaMalloc((void**)&amp;d_rowOneValue, memSize);</span><br><span class="line">    cudaMemcpy(d_rowOneValue+1, h_rowOneValue, sizeof(int)* (width), cudaMemcpyHostToDevice);</span><br><span class="line">    </span><br><span class="line">    int *d_rowTwoValue = NULL;</span><br><span class="line">    cudaMalloc((void**)&amp;d_rowTwoValue, memSize);</span><br><span class="line">    cudaMemcpy(d_rowTwoValue + 1, h_rowTwoValue, sizeof(int)* (width), cudaMemcpyHostToDevice);</span><br><span class="line"></span><br><span class="line">    int *d_rowOneLabel = NULL;</span><br><span class="line">    cudaMalloc((void**)&amp;d_rowOneLabel, memSize);</span><br><span class="line">    cudaMemcpy(d_rowOneLabel + 1, h_rowOneLabel, sizeof(int)* (width), cudaMemcpyHostToDevice);</span><br><span class="line"></span><br><span class="line">    int *d_rowTwoLabel = NULL;</span><br><span class="line">    cudaMalloc((void**)&amp;d_rowTwoLabel, memSize);</span><br><span class="line">    cudaMemcpy(d_rowTwoLabel + 1, h_rowTwoLabel, sizeof(int)* (width), cudaMemcpyHostToDevice);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    int memSizeFatherChild = sizeof(int)* width * 3;</span><br><span class="line">    </span><br><span class="line">    int* d_father = NULL;</span><br><span class="line">    cudaMalloc((void**)&amp;d_father, memSizeFatherChild);</span><br><span class="line">    cudaMemset(d_father, 0, memSizeFatherChild);</span><br><span class="line">    int* d_child = NULL;</span><br><span class="line">    cudaMalloc((void**)&amp;d_child, memSizeFatherChild);</span><br><span class="line">    cudaMemset(d_child, 0, memSizeFatherChild);</span><br><span class="line"></span><br><span class="line">    //接下来就是给d_father和d_child赋值</span><br><span class="line">    getFatherAndChild &lt;&lt; &lt;numBlocks, numThreads &gt;&gt; &gt;(d_rowOneValue, d_rowTwoValue, d_rowOneLabel, d_rowTwoLabel, width, d_father, d_child);</span><br><span class="line">    </span><br><span class="line">    char str_father[] = &quot;d_father&quot;;</span><br><span class="line">    checkDeviceArrayOfTypeInt(d_father, width * 3, str_father);</span><br><span class="line">    char str_child[] = &quot;d_father&quot;;</span><br><span class="line">    checkDeviceArrayOfTypeInt(d_child, width * 3, str_child);</span><br><span class="line"></span><br><span class="line">    //到这里为止father和child设置完毕，接下来要进行去重操作</span><br><span class="line">    //首先声明一个有效数组用来标记是否有效d_isValid</span><br><span class="line">    unsigned int* d_isValid = NULL;</span><br><span class="line">    cudaMalloc((void**)&amp;d_isValid, sizeof(unsigned int)* width * 3);</span><br><span class="line">    cudaMemset(d_isValid, 0, memSizeFatherChild);</span><br><span class="line">    getIsvalid &lt;&lt; &lt;numBlocks, numThreads &gt;&gt; &gt;(d_father, d_child, d_isValid, width * 3, numThreads, numBlocks);</span><br><span class="line"></span><br><span class="line">    int *h_isValid = (int*)malloc(sizeof(unsigned int)* width * 3);</span><br><span class="line">    cudaMemcpy(h_isValid, d_isValid, sizeof(unsigned int)* width * 3, cudaMemcpyDeviceToHost);</span><br><span class="line">    printf(&quot;h_isValid:\n&quot;);</span><br><span class="line">    int i;</span><br><span class="line">    for (i = 0; i &lt; width * 3; i++)</span><br><span class="line">    &#123;</span><br><span class="line">        printf(&quot;%d\t&quot;, h_isValid[i]);</span><br><span class="line">    &#125;</span><br><span class="line">    printf(&quot;\n&quot;);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    //现在已经有了d_father和d_child，以及d_isValid，接下来需要对d_father和d_child根据d_isValid进行compact操作</span><br><span class="line">    </span><br><span class="line">    size_t h_numValidElements = compactFatherAndChild(d_father, d_child, d_isValid, width * 3, h_fatherValid, h_childValid);</span><br><span class="line"></span><br><span class="line">    cudaFree(d_rowOneValue);</span><br><span class="line">    cudaFree(d_rowTwoValue);</span><br><span class="line">    cudaFree(d_rowOneLabel);</span><br><span class="line">    cudaFree(d_rowTwoLabel);</span><br><span class="line">    cudaFree(d_father);</span><br><span class="line">    cudaFree(d_child);</span><br><span class="line">    cudaFree(d_isValid);</span><br><span class="line"></span><br><span class="line">    return h_numValidElements;</span><br><span class="line">&#125;</span><br><span class="line">void initCUDA(int&amp; devIdx)</span><br><span class="line">&#123;</span><br><span class="line">    int deviceCount;</span><br><span class="line">    cudaGetDeviceCount(&amp;deviceCount);</span><br><span class="line">    if (deviceCount == 0) &#123;</span><br><span class="line">        fprintf(stderr, &quot;error: no devices supporting CUDA.\n&quot;);</span><br><span class="line">        exit(EXIT_FAILURE);</span><br><span class="line">    &#125;</span><br><span class="line">    int dev = 0;</span><br><span class="line">    if (devIdx &lt; 0) dev = 0;</span><br><span class="line">    if (devIdx &gt; deviceCount - 1) dev = deviceCount - 1;</span><br><span class="line">    else dev = devIdx;</span><br><span class="line">    cudaSetDevice(dev);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    cudaDeviceProp prop;</span><br><span class="line">    if (cudaGetDeviceProperties(&amp;prop, dev) == cudaSuccess)</span><br><span class="line">    &#123;</span><br><span class="line">        printf(&quot;Using device %d:\n&quot;, dev);</span><br><span class="line">        printf(&quot;%s; global mem: %dB; compute v%d.%d; clock: %d kHz\n&quot;,</span><br><span class="line">            prop.name, (int)prop.totalGlobalMem, (int)prop.major,</span><br><span class="line">            (int)prop.minor, (int)prop.clockRate);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line">void findMerge()</span><br><span class="line">&#123;</span><br><span class="line"> int gpuIdx = 1;</span><br><span class="line"> initCUDA(gpuIdx);</span><br><span class="line">    const int width = 5;</span><br><span class="line">    int h_rowOneValue[width] = &#123; 1, 1, 2, 1, 3 &#125;;</span><br><span class="line">    int h_rowTwoValue[width] = &#123; 4, 2, 1, 1, 1 &#125;;</span><br><span class="line"></span><br><span class="line">    int h_rowOneLabel[width] = &#123; 1, 1, 4, 2, 5 &#125;;</span><br><span class="line">    int h_rowTwoLabel[width] = &#123; 6, 7, 3, 3, 3 &#125;;</span><br><span class="line"></span><br><span class="line">    int numThreads = 1024;</span><br><span class="line">    int numBlocks = (width + numThreads - 1) / numThreads;</span><br><span class="line">    size_t h_numValidElements = 0;</span><br><span class="line">    int* h_fatherValid = NULL;</span><br><span class="line">    int* h_childValid = NULL;</span><br><span class="line"></span><br><span class="line">    h_numValidElements = findMergeFunc(h_rowOneValue, h_rowTwoValue, h_rowOneLabel, h_rowTwoLabel, width, numThreads, numBlocks, &amp;h_fatherValid, &amp;h_childValid);</span><br><span class="line">    </span><br><span class="line"></span><br><span class="line">    printf(&quot;numValidElements: %ld\n&quot;, h_numValidElements);</span><br><span class="line">    int i = 0;</span><br><span class="line">    for (i = 0; i &lt; h_numValidElements; i++)</span><br><span class="line">    &#123;</span><br><span class="line">        printf(&quot;%d\t&quot;, h_fatherValid[i]);</span><br><span class="line">    &#125;</span><br><span class="line">    printf(&quot;\n&quot;);</span><br><span class="line">    for (i = 0; i &lt; h_numValidElements; i++)</span><br><span class="line">    &#123;</span><br><span class="line">        printf(&quot;%d\t&quot;, h_childValid[i]);</span><br><span class="line">    &#125;</span><br><span class="line">    printf(&quot;\n&quot;);</span><br><span class="line">    free(h_fatherValid);</span><br><span class="line">    free(h_childValid);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+      
+    </div>
+
+    <div>
+      
+        
+
+      
+    </div>
+
+    <div>
+      
+        
+
+      
+    </div>
+
+    <div>
+      
+        
+
+      
+    </div>
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/CUDPP/" rel="tag"># CUDPP</a>
+          
+        </div>
+      
+
+      
+        
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2018/05/17/CUDA性能指标/" rel="next" title="CUDA性能指标">
+                <i class="fa fa-chevron-left"></i> CUDA性能指标
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2018/05/25/static关键字的使用/" rel="prev" title="static关键字的使用">
+                static关键字的使用 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+  <div class="comments" id="comments">
+    
+  </div>
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            Table of Contents
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview">
+            Overview
+          </li>
+        </ul>
+      
+
+      <section class="site-overview sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+          <img class="site-author-image" itemprop="image" src="/image/fly.jpg" alt>
+          <p class="site-author-name" itemprop="name"></p>
+           
+              <p class="site-description motion-element" itemprop="description">From zero to hero</p>
+          
+        </div>
+        <nav class="site-state motion-element">
+
+          
+            <div class="site-state-item site-state-posts">
+              <a href="/archives">
+                <span class="site-state-item-count">59</span>
+                <span class="site-state-item-name">posts</span>
+              </a>
+            </div>
+          
+
+          
+            
+            
+            <div class="site-state-item site-state-categories">
+              <a href="/categories/index.html">
+                <span class="site-state-item-count">9</span>
+                <span class="site-state-item-name">categories</span>
+              </a>
+            </div>
+          
+
+          
+            
+            
+            <div class="site-state-item site-state-tags">
+              <a href="/tags/index.html">
+                <span class="site-state-item-count">44</span>
+                <span class="site-state-item-name">tags</span>
+              </a>
+            </div>
+          
+
+        </nav>
+
+        
+
+        <div class="links-of-author motion-element">
+          
+            
+              <span class="links-of-author-item">
+                <a href="https://github.com/silence-inner-peace" target="_blank" title="github">
+                  
+                    <i class="fa fa-fw fa-globe"></i>
+                  
+                  github
+                </a>
+              </span>
+            
+              <span class="links-of-author-item">
+                <a href="https://www.zhihu.com/people/yuan-hong-94-43/activities" target="_blank" title="zhihu">
+                  
+                    <i class="fa fa-fw fa-globe"></i>
+                  
+                  zhihu
+                </a>
+              </span>
+            
+          
+        </div>
+
+        
+        
+
+        
+        
+          <div class="links-of-blogroll motion-element links-of-blogroll-inline">
+            <div class="links-of-blogroll-title">
+              <i class="fa  fa-fw fa-globe"></i>
+              Links
+            </div>
+            <ul class="links-of-blogroll-list">
+              
+                <li class="links-of-blogroll-item">
+                  <a href="https://www.github.com" title="Github" target="_blank">Github</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="http://www.imooc.com" title="imooc" target="_blank">imooc</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="https://www.ted.com" title="TED" target="_blank">TED</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="https://www.nowcoder.com" title="nowcoder" target="_blank">nowcoder</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="http://www.bbc.co.uk/learningenglish/english/features/6-minute-english" title="BBC" target="_blank">BBC</a>
+                </li>
+              
+            </ul>
+          </div>
+        
+        <iframe frameborder="no" border="0" marginwidth="0" marginheight="0" width="330" height="86" src="//music.163.com/outchain/player?type=2&id=110167&auto=0&height=66"></iframe>
+        
+
+
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#算法目标"><span class="nav-number">1.</span> <span class="nav-text">算法目标</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#CUDA并行算法思想"><span class="nav-number">2.</span> <span class="nav-text">CUDA并行算法思想</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#程序实现过程中遇到的问题"><span class="nav-number">3.</span> <span class="nav-text">程序实现过程中遇到的问题</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#并行算法实现"><span class="nav-number">4.</span> <span class="nav-text">并行算法实现</span></a></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder"></span>
+</div>
+
+
+<div class="powered-by">
+  Powered by <a class="theme-link" href="https://hexo.io">Hexo</a>
+</div>
+
+<div class="theme-info">
+  Theme -
+  <a class="theme-link" href="https://github.com/iissnan/hexo-theme-next">
+    NexT.Pisces
+  </a>
+</div>
+
+
+        
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+
+  
+  <script type="text/javascript" src="/lib/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+
+  
+  <script type="text/javascript" src="/lib/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+
+  
+  <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/lib/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.1.1"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.1.1"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=5.1.1"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=5.1.1"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.1"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.1"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.1.1"></script>
+
+
+
+  
+
+
+  
+
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>

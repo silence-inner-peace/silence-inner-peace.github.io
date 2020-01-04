@@ -1,0 +1,757 @@
+<!doctype html>
+
+
+
+  
+
+
+<html class="theme-next pisces use-motion" lang="zh-cn">
+<head><meta name="generator" content="Hexo 3.9.0">
+  <meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform">
+<meta http-equiv="Cache-Control" content="no-siteapp">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  <link href="/lib/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css">
+
+
+
+
+  
+  
+  
+  
+
+  
+    
+    
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+    
+    
+    <link href="//fonts.googleapis.com/css?family=Lato:300,300italic,400,400italic,700,700italic&subset=latin,latin-ext" rel="stylesheet" type="text/css">
+  
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css">
+
+<link href="/css/main.css?v=5.1.1" rel="stylesheet" type="text/css">
+
+
+  <meta name="keywords" content="MPI,">
+
+
+
+
+
+
+
+
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=5.1.1">
+
+
+
+
+
+
+<meta name="description" content="并行计算中的任务分发在并行计算中，任务划分与求解问题的规模和处理机的结构密切相关，任务划分的方式极大的影响并行计算机能否有效发挥其性能，减少求解的时间。任务分配的几种常用方法有：按块分配、卷帘分配等;传统的块分配中，如果有m个处理器，就将任务分为m块，然后每个处理器或者进程组负责完成其中的一块任务，这种方法属于静态负载平衡。但是有的时候任务计算时间的多少是不固定的，比如当算法中出现迭代的情况时，静">
+<meta name="keywords" content="MPI">
+<meta property="og:type" content="article">
+<meta property="og:title" content="MPI实现manager-worker模式">
+<meta property="og:url" content="https://silence-inner-peace.github.io/2018/10/11/MPI实现manager-worker模式/index.html">
+<meta property="og:site_name" content="学思考的小孩儿">
+<meta property="og:description" content="并行计算中的任务分发在并行计算中，任务划分与求解问题的规模和处理机的结构密切相关，任务划分的方式极大的影响并行计算机能否有效发挥其性能，减少求解的时间。任务分配的几种常用方法有：按块分配、卷帘分配等;传统的块分配中，如果有m个处理器，就将任务分为m块，然后每个处理器或者进程组负责完成其中的一块任务，这种方法属于静态负载平衡。但是有的时候任务计算时间的多少是不固定的，比如当算法中出现迭代的情况时，静">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:updated_time" content="2019-02-23T13:10:56.000Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="MPI实现manager-worker模式">
+<meta name="twitter:description" content="并行计算中的任务分发在并行计算中，任务划分与求解问题的规模和处理机的结构密切相关，任务划分的方式极大的影响并行计算机能否有效发挥其性能，减少求解的时间。任务分配的几种常用方法有：按块分配、卷帘分配等;传统的块分配中，如果有m个处理器，就将任务分为m块，然后每个处理器或者进程组负责完成其中的一块任务，这种方法属于静态负载平衡。但是有的时候任务计算时间的多少是不固定的，比如当算法中出现迭代的情况时，静">
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Pisces',
+    sidebar: {"position":"left","display":"post","offset":12,"offset_float":0,"b2t":false,"scrollpercent":false},
+    fancybox: true,
+    motion: true,
+    duoshuo: {
+      userId: '0',
+      author: 'Author'
+    },
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+
+  <link rel="canonical" href="https://silence-inner-peace.github.io/2018/10/11/MPI实现manager-worker模式/">
+
+
+
+
+
+  <title>MPI实现manager-worker模式 | 学思考的小孩儿</title>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-cn">
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    
+  
+
+  
+  <div class="container sidebar-position-left page-post-detail ">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">学思考的小孩儿</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle"></p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-home"></i> <br>
+            
+            Home
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-archive"></i> <br>
+            
+            Archives
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-categories">
+          <a href="/categories" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-th"></i> <br>
+            
+            Categories
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-tags">
+          <a href="/tags" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-tags"></i> <br>
+            
+            Tags
+          </a>
+        </li>
+      
+
+      
+    </ul>
+  
+
+  
+</nav>
+
+
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal " itemscope itemtype="http://schema.org/Article">
+    <link itemprop="mainEntityOfPage" href="https://silence-inner-peace.github.io/2018/10/11/MPI实现manager-worker模式/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content>
+      <meta itemprop="description" content>
+      <meta itemprop="image" content="/image/fly.jpg">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="学思考的小孩儿">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">MPI实现manager-worker模式</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">Posted on</span>
+              
+              <time title="Post created" itemprop="dateCreated datePublished" datetime="2018-10-11T16:10:11+08:00">
+                2018-10-11
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <script src="/assets/js/APlayer.min.js"> </script><h3 id="并行计算中的任务分发"><a href="#并行计算中的任务分发" class="headerlink" title="并行计算中的任务分发"></a>并行计算中的任务分发</h3><p>在并行计算中，任务划分与求解问题的规模和处理机的结构密切相关，任务划分的方式极大的影响并行计算机能否有效发挥其性能，减少求解的时间。任务分配的几种常用方法有：按块分配、卷帘分配等;<br>传统的块分配中，如果有m个处理器，就将任务分为m块，然后每个处理器或者进程组负责完成其中的一块任务，这种方法属于静态负载平衡。但是有的时候任务计算时间的多少是不固定的，比如当算法中出现迭代的情况时，静态负载平衡的方法可能效果较差。<br>还有一种情况就是当任务之间存在相互依赖时。一种解决方案就是将这些任务在处理器中利用求解连通分量的方法划分为s个任务组，再将这些任务组分配给各个从处理器。<br>当任务之间不存在依赖关系时，可以在主进程上将任务进行分组，形成任务列表，各个从进程向主进程发出任务请求，如果任务列表中还有没有完成的任务，那么将任务发送给从进程，否则发送一个终止信号给从进程，说明没有任务可以执行了，然后从进程发送一个本进程要终止的消息，主进程那边终止进程的计数+1,当所有从进程都终止之后程序完成，退出。</p>
+<a id="more"></a>
+<h3 id="用MPI模拟文件读取以及任务分发的操作"><a href="#用MPI模拟文件读取以及任务分发的操作" class="headerlink" title="用MPI模拟文件读取以及任务分发的操作"></a>用MPI模拟文件读取以及任务分发的操作</h3><p>程序思路：<br>将0号进程设置为Manager，执行manager(int p)函数，而其他进程为worker,执行worker(int id)函数。Manager进程负责读取文件需要处理的文件列表，然后等待请求; 而worker进程则发出请求，在文件存在的条件下，每接收一个worker的请求，就读出一个文件发送给worker进程处理，当文件分配完毕的时候将发送给woeker的filename设置为’\n’，worker进行判断，如果接收到的filename为’\n’，则说明没有任务可以执行了，将power[0]设置为1,给manager发送本进程要终止的消息，然后Manager的终止进程计数+1,当所有进程都发送终止之后，程序完成，退出;<br>实现任务在主进程和从进程之间传递，以及主进程控制终止的条件就是这个int *power变量，power是一个由两个int型整数组成的数组。<br>power[0]=0表示从进程获得的任务是正常的任务，<br>power[0] = 1,表示从进程没有受到要处理的任务，可以终止了。<br>power[1] 表示worker_id</p>
+<p>如果程序报错说少不到io.h头文件，可以用find /usr/include -name “io.h”，找到文件位置，在我的机器上发现io.h不在 /usr/include目录下，而在/usr/include/x86_64-linux-gnu/sys目录下，所以用sudo cp /usr/include/x86_64-linux-gnu/sys/io.h /usr/include 将头文件拷贝到/usr/include目录下即可。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br></pre></td><td class="code"><pre><span class="line">#include &lt;stdio.h&gt;</span><br><span class="line">#include &quot;mpi.h&quot;</span><br><span class="line">#include &lt;malloc.h&gt;</span><br><span class="line">#include &lt;string.h&gt;</span><br><span class="line">#include &lt;sys/stat.h&gt;</span><br><span class="line">#include &lt;io.h&gt;</span><br><span class="line"></span><br><span class="line">void manager(int p);</span><br><span class="line">void worker(int id);</span><br><span class="line">int read_file_name();</span><br><span class="line">int main(int argc , char* argv[])</span><br><span class="line">&#123;</span><br><span class="line">    int id ;</span><br><span class="line">    int p ;</span><br><span class="line">    MPI_Init(&amp;argc,&amp;argv) ;</span><br><span class="line">    MPI_Comm_rank(MPI_COMM_WORLD,&amp;id);</span><br><span class="line">    MPI_Comm_size(MPI_COMM_WORLD,&amp;p);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    if (!id)</span><br><span class="line">    &#123;</span><br><span class="line">        manager(p);</span><br><span class="line">    &#125;else&#123;</span><br><span class="line">        worker(id);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    MPI_Finalize();</span><br><span class="line">    return 0 ;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">void manager(int p)</span><br><span class="line">&#123;</span><br><span class="line">    int *power ;</span><br><span class="line">    MPI_Status status ;</span><br><span class="line">    char * filename ;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    char c ;</span><br><span class="line">    FILE* fp ;</span><br><span class="line">    int i ;</span><br><span class="line">    int file_size ;</span><br><span class="line">    int terminate ;</span><br><span class="line">    terminate = 0 ;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    file_size = read_file_name() ;   // 读取文件个数</span><br><span class="line">    filename = (char*)malloc(sizeof(char)*1024) ;</span><br><span class="line">    power = (int*)malloc(sizeof(int)*2) ;</span><br><span class="line">    memset(filename,0,sizeof(char)*1024) ;</span><br><span class="line">    memset(power,0,sizeof(int)*2) ;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    fp = fopen(&quot;./files.txt&quot;,&quot;r&quot;);</span><br><span class="line">    if (fp==NULL)</span><br><span class="line">    &#123;</span><br><span class="line">        printf(&quot;Read file list error...&quot;) ;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    i = 0 ;</span><br><span class="line">    do </span><br><span class="line">    &#123;</span><br><span class="line">        printf(&quot;------------------------ I am manager ------------------------\n&quot;) ;</span><br><span class="line">        MPI_Recv(power,2,MPI_INT,MPI_ANY_SOURCE,MPI_ANY_TAG,MPI_COMM_WORLD,&amp;status) ;   // Manager 接收到Worker的请求信息</span><br><span class="line">        printf(&quot;I received the request from process :%d\n&quot;,power[1]) ;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">        /************ 接收到信息后开始读文件***************/</span><br><span class="line">//fgetc从文件指针stream指向的文件中读取一个字符，读取一个字节后，光标位置后移一个字节</span><br><span class="line">        c= fgetc(fp);</span><br><span class="line">        if ((power[0]==0)&amp;&amp;(c!=EOF))</span><br><span class="line">        &#123;</span><br><span class="line">            while((c!=&apos;\n&apos;)&amp;&amp;(c!=EOF))&#123;</span><br><span class="line">                filename[i] = c ;</span><br><span class="line">                i++;</span><br><span class="line">                c = fgetc(fp);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">            MPI_Send(filename,1024,MPI_CHAR,power[1],0,MPI_COMM_WORLD) ;</span><br><span class="line">            i = 0 ;</span><br><span class="line">            printf(&quot;I sent the file : %s to the process :%d\n&quot;,filename,power[1]) ;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">        /**************** 如果文件读完则发送读完的消息给worker **********************/</span><br><span class="line">        if (c==EOF)</span><br><span class="line">        &#123;</span><br><span class="line">            printf(&quot;Now no files need process , send terminate sign to process:%d\n&quot;,power[1]) ;</span><br><span class="line">            filename[0] = &apos;\n&apos;;</span><br><span class="line">            MPI_Send(filename,1024,MPI_CHAR,power[1],0,MPI_COMM_WORLD) ;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">        /******************** worker处理完发送处理完的信号**********************/</span><br><span class="line">        if (power[0]==1)</span><br><span class="line">        &#123;</span><br><span class="line">            terminate++;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">        printf(&quot;------------------------------------------------\n\n\n&quot;);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    &#125; while (terminate&lt;(p-1));</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    printf(&quot;------------------------ The all work have done ---------------------------\n&quot;) ;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    fclose(fp);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">void worker(int id)</span><br><span class="line">&#123;</span><br><span class="line">     int *power ;</span><br><span class="line">     char *filename ;</span><br><span class="line">     MPI_Status status ;</span><br><span class="line">     power = (int*)malloc(sizeof(int)*2) ;</span><br><span class="line">     filename = (char*)malloc(sizeof(char)*1024) ;</span><br><span class="line">     memset(power,0,sizeof(int)*2) ;</span><br><span class="line">     memset(filename,0,sizeof(char)*1024) ; </span><br><span class="line"></span><br><span class="line"></span><br><span class="line">     power[0] = 0 ;</span><br><span class="line">     power[1] = id ;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">     for (;;)</span><br><span class="line">     &#123;</span><br><span class="line">         printf(&quot;-----------------------I am worker : %d -------------------------\n&quot;,power[1]) ;</span><br><span class="line">         MPI_Send(power,2,MPI_INT,0,id,MPI_COMM_WORLD) ;     // 给Manager发送请求信息</span><br><span class="line">         MPI_Recv(filename,1024,MPI_CHAR,0,0,MPI_COMM_WORLD,&amp;status) ;</span><br><span class="line">         if(filename[0]!=&apos;\n&apos;)</span><br><span class="line">         &#123;</span><br><span class="line">             printf(&quot;I received the file : %s from Manager.\n&quot;,filename) ;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">         &#125;else&#123;</span><br><span class="line">             printf(&quot;I have not received from Manager , shoud be terminated .\n&quot;) ;</span><br><span class="line">             power[0] = 1 ;</span><br><span class="line">             MPI_Send(power,2,MPI_INT,0,id,MPI_COMM_WORLD) ; </span><br><span class="line">             break ;</span><br><span class="line">         &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">         printf(&quot;-----------------------------------------------------------------\n\n\n&quot;) ;</span><br><span class="line">     &#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">int read_file_name()</span><br><span class="line">&#123;</span><br><span class="line">    return 10 ;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<h3 id="参考："><a href="#参考：" class="headerlink" title="参考："></a>参考：</h3><p><a href="https://blog.csdn.net/houqd2012/article/details/8315321#commentBox" target="_blank" rel="noopener">https://blog.csdn.net/houqd2012/article/details/8315321#commentBox</a></p>
+
+      
+    </div>
+
+    <div>
+      
+        
+
+      
+    </div>
+
+    <div>
+      
+        
+
+      
+    </div>
+
+    <div>
+      
+        
+
+      
+    </div>
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/MPI/" rel="tag"># MPI</a>
+          
+        </div>
+      
+
+      
+        
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2018/09/16/CUDA概念理解以及犯过的错/" rel="next" title="CUDA概念理解以及犯过的错">
+                <i class="fa fa-chevron-left"></i> CUDA概念理解以及犯过的错
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2018/10/22/MPI-CUDA混合编程-Makefile文件写法/" rel="prev" title="MPI+CUDA混合编程 Makefile文件写法">
+                MPI+CUDA混合编程 Makefile文件写法 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+  <div class="comments" id="comments">
+    
+  </div>
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            Table of Contents
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview">
+            Overview
+          </li>
+        </ul>
+      
+
+      <section class="site-overview sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+          <img class="site-author-image" itemprop="image" src="/image/fly.jpg" alt>
+          <p class="site-author-name" itemprop="name"></p>
+           
+              <p class="site-description motion-element" itemprop="description">From zero to hero</p>
+          
+        </div>
+        <nav class="site-state motion-element">
+
+          
+            <div class="site-state-item site-state-posts">
+              <a href="/archives">
+                <span class="site-state-item-count">59</span>
+                <span class="site-state-item-name">posts</span>
+              </a>
+            </div>
+          
+
+          
+            
+            
+            <div class="site-state-item site-state-categories">
+              <a href="/categories/index.html">
+                <span class="site-state-item-count">9</span>
+                <span class="site-state-item-name">categories</span>
+              </a>
+            </div>
+          
+
+          
+            
+            
+            <div class="site-state-item site-state-tags">
+              <a href="/tags/index.html">
+                <span class="site-state-item-count">44</span>
+                <span class="site-state-item-name">tags</span>
+              </a>
+            </div>
+          
+
+        </nav>
+
+        
+
+        <div class="links-of-author motion-element">
+          
+            
+              <span class="links-of-author-item">
+                <a href="https://github.com/silence-inner-peace" target="_blank" title="github">
+                  
+                    <i class="fa fa-fw fa-globe"></i>
+                  
+                  github
+                </a>
+              </span>
+            
+              <span class="links-of-author-item">
+                <a href="https://www.zhihu.com/people/yuan-hong-94-43/activities" target="_blank" title="zhihu">
+                  
+                    <i class="fa fa-fw fa-globe"></i>
+                  
+                  zhihu
+                </a>
+              </span>
+            
+          
+        </div>
+
+        
+        
+
+        
+        
+          <div class="links-of-blogroll motion-element links-of-blogroll-inline">
+            <div class="links-of-blogroll-title">
+              <i class="fa  fa-fw fa-globe"></i>
+              Links
+            </div>
+            <ul class="links-of-blogroll-list">
+              
+                <li class="links-of-blogroll-item">
+                  <a href="https://www.github.com" title="Github" target="_blank">Github</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="http://www.imooc.com" title="imooc" target="_blank">imooc</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="https://www.ted.com" title="TED" target="_blank">TED</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="https://www.nowcoder.com" title="nowcoder" target="_blank">nowcoder</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="http://www.bbc.co.uk/learningenglish/english/features/6-minute-english" title="BBC" target="_blank">BBC</a>
+                </li>
+              
+            </ul>
+          </div>
+        
+        <iframe frameborder="no" border="0" marginwidth="0" marginheight="0" width="330" height="86" src="//music.163.com/outchain/player?type=2&id=110167&auto=0&height=66"></iframe>
+        
+
+
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#并行计算中的任务分发"><span class="nav-number">1.</span> <span class="nav-text">并行计算中的任务分发</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#用MPI模拟文件读取以及任务分发的操作"><span class="nav-number">2.</span> <span class="nav-text">用MPI模拟文件读取以及任务分发的操作</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#参考："><span class="nav-number">3.</span> <span class="nav-text">参考：</span></a></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder"></span>
+</div>
+
+
+<div class="powered-by">
+  Powered by <a class="theme-link" href="https://hexo.io">Hexo</a>
+</div>
+
+<div class="theme-info">
+  Theme -
+  <a class="theme-link" href="https://github.com/iissnan/hexo-theme-next">
+    NexT.Pisces
+  </a>
+</div>
+
+
+        
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+
+  
+  <script type="text/javascript" src="/lib/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+
+  
+  <script type="text/javascript" src="/lib/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+
+  
+  <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/lib/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.1.1"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.1.1"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=5.1.1"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=5.1.1"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.1"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.1"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.1.1"></script>
+
+
+
+  
+
+
+  
+
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>

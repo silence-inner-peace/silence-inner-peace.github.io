@@ -1,0 +1,771 @@
+<!doctype html>
+
+
+
+  
+
+
+<html class="theme-next pisces use-motion" lang="zh-cn">
+<head><meta name="generator" content="Hexo 3.9.0">
+  <meta charset="UTF-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+
+
+
+
+
+<meta http-equiv="Cache-Control" content="no-transform">
+<meta http-equiv="Cache-Control" content="no-siteapp">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+  <link href="/lib/fancybox/source/jquery.fancybox.css?v=2.1.5" rel="stylesheet" type="text/css">
+
+
+
+
+  
+  
+  
+  
+
+  
+    
+    
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+    
+    
+    <link href="//fonts.googleapis.com/css?family=Lato:300,300italic,400,400italic,700,700italic&subset=latin,latin-ext" rel="stylesheet" type="text/css">
+  
+
+
+
+
+
+
+<link href="/lib/font-awesome/css/font-awesome.min.css?v=4.6.2" rel="stylesheet" type="text/css">
+
+<link href="/css/main.css?v=5.1.1" rel="stylesheet" type="text/css">
+
+
+  <meta name="keywords" content="CUDA,MPI,MPI+CUDA,">
+
+
+
+
+
+
+
+
+  <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico?v=5.1.1">
+
+
+
+
+
+
+<meta name="description" content="问题描述GPU是提升性能的强大工具，所以我们希望能够利用多GPU提升程序的效率，这样就可以实现MPI进程+CUDA轻量级线程的两层并行。NVIDIA的SLI(Scalable Link Interface)技术允许一个主机同时控制4个GPU，由于功耗和散热的限制，在一个系统上运行多个任务一直是一个挑战。然而，kernel的启动一次只能针对一个GPU，在多GPU系统中可以使用cudaSetDevic">
+<meta name="keywords" content="CUDA,MPI,MPI+CUDA">
+<meta property="og:type" content="article">
+<meta property="og:title" content="多节点MPI+CUDA的程序中GPU与进程的绑定">
+<meta property="og:url" content="https://silence-inner-peace.github.io/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/index.html">
+<meta property="og:site_name" content="学思考的小孩儿">
+<meta property="og:description" content="问题描述GPU是提升性能的强大工具，所以我们希望能够利用多GPU提升程序的效率，这样就可以实现MPI进程+CUDA轻量级线程的两层并行。NVIDIA的SLI(Scalable Link Interface)技术允许一个主机同时控制4个GPU，由于功耗和散热的限制，在一个系统上运行多个任务一直是一个挑战。然而，kernel的启动一次只能针对一个GPU，在多GPU系统中可以使用cudaSetDevic">
+<meta property="og:locale" content="zh-cn">
+<meta property="og:image" content="https://silence-inner-peace.github.io/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/1.png">
+<meta property="og:image" content="https://silence-inner-peace.github.io/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/2.png">
+<meta property="og:image" content="https://silence-inner-peace.github.io/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/3.png">
+<meta property="og:image" content="https://silence-inner-peace.github.io/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/4.png">
+<meta property="og:updated_time" content="2019-04-27T10:35:28.000Z">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="多节点MPI+CUDA的程序中GPU与进程的绑定">
+<meta name="twitter:description" content="问题描述GPU是提升性能的强大工具，所以我们希望能够利用多GPU提升程序的效率，这样就可以实现MPI进程+CUDA轻量级线程的两层并行。NVIDIA的SLI(Scalable Link Interface)技术允许一个主机同时控制4个GPU，由于功耗和散热的限制，在一个系统上运行多个任务一直是一个挑战。然而，kernel的启动一次只能针对一个GPU，在多GPU系统中可以使用cudaSetDevic">
+<meta name="twitter:image" content="https://silence-inner-peace.github.io/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/1.png">
+
+
+
+<script type="text/javascript" id="hexo.configurations">
+  var NexT = window.NexT || {};
+  var CONFIG = {
+    root: '/',
+    scheme: 'Pisces',
+    sidebar: {"position":"left","display":"post","offset":12,"offset_float":0,"b2t":false,"scrollpercent":false},
+    fancybox: true,
+    motion: true,
+    duoshuo: {
+      userId: '0',
+      author: 'Author'
+    },
+    algolia: {
+      applicationID: '',
+      apiKey: '',
+      indexName: '',
+      hits: {"per_page":10},
+      labels: {"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}
+    }
+  };
+</script>
+
+
+
+  <link rel="canonical" href="https://silence-inner-peace.github.io/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/">
+
+
+
+
+
+  <title>多节点MPI+CUDA的程序中GPU与进程的绑定 | 学思考的小孩儿</title>
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage" lang="zh-cn">
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  
+    
+  
+
+  
+  <div class="container sidebar-position-left page-post-detail ">
+    <div class="headband"></div>
+
+    <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-wrapper">
+  <div class="site-meta ">
+    
+
+    <div class="custom-logo-site-title">
+      <a href="/" class="brand" rel="start">
+        <span class="logo-line-before"><i></i></span>
+        <span class="site-title">学思考的小孩儿</span>
+        <span class="logo-line-after"><i></i></span>
+      </a>
+    </div>
+      
+        <p class="site-subtitle"></p>
+      
+  </div>
+
+  <div class="site-nav-toggle">
+    <button>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+      <span class="btn-bar"></span>
+    </button>
+  </div>
+</div>
+
+<nav class="site-nav">
+  
+
+  
+    <ul id="menu" class="menu">
+      
+        
+        <li class="menu-item menu-item-home">
+          <a href="/" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-home"></i> <br>
+            
+            Home
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-archive"></i> <br>
+            
+            Archives
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-categories">
+          <a href="/categories" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-th"></i> <br>
+            
+            Categories
+          </a>
+        </li>
+      
+        
+        <li class="menu-item menu-item-tags">
+          <a href="/tags" rel="section">
+            
+              <i class="menu-item-icon fa fa-fw fa-tags"></i> <br>
+            
+            Tags
+          </a>
+        </li>
+      
+
+      
+    </ul>
+  
+
+  
+</nav>
+
+
+
+ </div>
+    </header>
+
+    <main id="main" class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          <div id="content" class="content">
+            
+
+  <div id="posts" class="posts-expand">
+    
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal " itemscope itemtype="http://schema.org/Article">
+    <link itemprop="mainEntityOfPage" href="https://silence-inner-peace.github.io/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content>
+      <meta itemprop="description" content>
+      <meta itemprop="image" content="/image/fly.jpg">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="学思考的小孩儿">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">多节点MPI+CUDA的程序中GPU与进程的绑定</h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">Posted on</span>
+              
+              <time title="Post created" itemprop="dateCreated datePublished" datetime="2019-04-07T09:56:23+08:00">
+                2019-04-07
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        <script src="/assets/js/APlayer.min.js"> </script><h3 id="问题描述"><a href="#问题描述" class="headerlink" title="问题描述"></a>问题描述</h3><p>GPU是提升性能的强大工具，所以我们希望能够利用多GPU提升程序的效率，这样就可以实现MPI进程+CUDA轻量级线程的两层并行。NVIDIA的SLI(Scalable Link Interface)技术允许一个主机同时控制4个GPU，由于功耗和散热的限制，在一个系统上运行多个任务一直是一个挑战。然而，kernel的启动一次只能针对一个GPU，在多GPU系统中可以使用cudaSetDevice()函数来指定目标设备。如果我们有GPU集群，能否支持超过4个GPU呢？<br>解决方案是用MPI协调多个主机程序，每个主机程序控制一个或多个GPU。MPI用于在主机缓冲区间进行数据传输。现在对于部分NVIDIA设备已经支持MPI的识别，可以直接将设备指针传到MPI的函数中。但为了使得程序在任何集群上都能运行，在MPI不能识别CUDA的情况下，在调用MPI函数进行数据传输之前，将数据显式的拷贝到主机端，在目的进程接收之后在拷贝到设备端。</p>
+<a id="more"></a>
+<p>在编写多GPU程序的时候，如何将MPI进程与节点上的GPU进行绑定呢？绑定时要考虑以下情况：有时一个节点上可能有多个GPU但是只有其中一部分是有效的，比如我们的程序需要计算能力大于3.5的GPU，这时有效GPU的编号可能并不连续。<br>注意：在运行多节点MPI程序时需要在每个节点的相同目录下存放运行程序所需要的数据，例如：scp -r /state/partition1/zhb/ root@compute-0-0:/state/partition1/，在不同节点之间用scp命令将数据拷贝到其他参与计算的节点。程序一般都是放在集群的共享分区中的，不需要拷贝。如果不知道文件的具体位置可以用类似这样的命令find -name cal*.tif来查找cal开头的.tif文件</p>
+<h3 id="解决方案"><a href="#解决方案" class="headerlink" title="解决方案"></a>解决方案</h3><p>对MPI进程进行封装，实现与特定节点特定GPU的绑定。在写machinefile文件之前需要了解集群中每个节点的GPU设备情况。可以用nvidia-smi来查看。<br><img src="/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/1.png" alt="图片"><br><img src="/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/2.png" alt="图片"><br><img src="/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/3.png" alt="图片"><br>从上面的查询结果来看compute-0-0和hpscil都有2个可用的K40GPU，compute-0-11只有一个K40。跟据各节点的GPU设备情况写machinefile文件，假设下面是集群中的machinefile配置文件。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">compute-0-0 slots=2</span><br><span class="line">compute-0-11  slots=1</span><br><span class="line">hpscil slots=2</span><br></pre></td></tr></table></figure></p>
+<p>接下来实现一个DeviceInfo类实现对GPU信息的查看和编号的获取。程序中设置计算能力大于3.0的为有效的GPU，getId()函数获取有效GPU的编号。<br>实现DeviceProcessor类。mnDevCount 是一个节点上的GPU的个数。mvValidDeviceId是vector数组，保存了一个节点上有效GPU的ID。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br></pre></td><td class="code"><pre><span class="line">//DeviceInfo.h</span><br><span class="line">#ifndef DEVICE_INFO_H</span><br><span class="line">#define DEVICE_INFO_H</span><br><span class="line">#include &lt;string&gt;</span><br><span class="line">#include &lt;vector&gt;</span><br><span class="line">#include &lt;math.h&gt;</span><br><span class="line">#include &quot;mpi.h&quot;</span><br><span class="line">#include &lt;cuda_runtime.h&gt;</span><br><span class="line">#include &lt;iostream&gt;</span><br><span class="line">using namespace std;</span><br><span class="line"></span><br><span class="line">class DeviceInfo</span><br><span class="line">&#123;</span><br><span class="line">public:</span><br><span class="line">    DeviceInfo(int id)</span><br><span class="line">    &#123;</span><br><span class="line">        mnId = id;</span><br><span class="line">        cudaDeviceProp prop1;</span><br><span class="line">        cudaGetDeviceProperties(&amp;prop1,mnId);</span><br><span class="line">        mnMultiProcessorCount = prop1.multiProcessorCount;</span><br><span class="line">        mnComputeAblity = prop1.major;</span><br><span class="line">    &#125;</span><br><span class="line">    int getId()</span><br><span class="line">    &#123;</span><br><span class="line">        return mnId;</span><br><span class="line">    &#125;</span><br><span class="line">    int getSMCount()</span><br><span class="line">    &#123;</span><br><span class="line">        return mnMultiProcessorCount;</span><br><span class="line">    &#125;</span><br><span class="line">    bool isValid()</span><br><span class="line">    &#123;</span><br><span class="line">        if(mnMultiProcessorCount &gt; 1 &amp;&amp; mnComputeAblity &gt;= 3)</span><br><span class="line">            return true;</span><br><span class="line">        else</span><br><span class="line">            return false;</span><br><span class="line">    &#125;</span><br><span class="line">private:</span><br><span class="line">    int mnId;</span><br><span class="line">    int mnMultiProcessorCount;</span><br><span class="line">    int mnComputeAblity;</span><br><span class="line">&#125;;</span><br><span class="line">class DeviceProcessor</span><br><span class="line">&#123;</span><br><span class="line">public:</span><br><span class="line">    DeviceProcessor(string name)</span><br><span class="line">    &#123;</span><br><span class="line">        cudaGetDeviceCount(&amp;mnDevCount);</span><br><span class="line">        mstrDeviceOnName = name;</span><br><span class="line">        for(int i = 0;i &lt; mnDevCount;i++)</span><br><span class="line">        &#123;</span><br><span class="line">            if(DeviceInfo(i).isValid())</span><br><span class="line">                mvValidDeviceId.push_back(i);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    DeviceProcessor()</span><br><span class="line">    &#123;</span><br><span class="line">        cudaGetDeviceCount(&amp;mnDevCount);</span><br><span class="line">        for(int i = 0;i &lt; mnDevCount;i++)</span><br><span class="line">        &#123;</span><br><span class="line">            if(DeviceInfo(i).isValid())</span><br><span class="line">                mvValidDeviceId.push_back(i);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    void setDeviceOn(string strname)</span><br><span class="line">    &#123;</span><br><span class="line">        mstrDeviceOnName = strname;</span><br><span class="line">    &#125;</span><br><span class="line">    vector&lt;int&gt; getAllDevice()</span><br><span class="line">    &#123;</span><br><span class="line">        return mvValidDeviceId;</span><br><span class="line">    &#125;</span><br><span class="line">    bool Valid()</span><br><span class="line">    &#123;</span><br><span class="line">        // allDevice();</span><br><span class="line">        if(mvValidDeviceId.empty())</span><br><span class="line">        &#123;</span><br><span class="line">            cerr &lt;&lt; __FILE__ &lt;&lt; &quot;  &quot; &lt;&lt; __FUNCTION__ &lt;&lt; &quot;:&quot; &lt;&lt; &quot;there is no valid device&quot; &lt;&lt; endl;</span><br><span class="line">            return false;</span><br><span class="line">        &#125;</span><br><span class="line">        return true;</span><br><span class="line">    &#125;</span><br><span class="line">    int setDevice()</span><br><span class="line">    &#123;</span><br><span class="line">        if(mnDeviceId &lt; mnDevCount)</span><br><span class="line">        &#123;</span><br><span class="line">            cudaSetDevice(mnDeviceId);</span><br><span class="line">            return 1;</span><br><span class="line">        &#125;</span><br><span class="line">        else</span><br><span class="line">        &#123;</span><br><span class="line">            cudaSetDevice(0);</span><br><span class="line">            return -1;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    void setDeviceID(int nDevice)</span><br><span class="line">    &#123;</span><br><span class="line">        mnDeviceId = nDevice;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">private:</span><br><span class="line">    int mnDeviceId;</span><br><span class="line">    int mnDevCount;</span><br><span class="line">    string mstrDeviceOnName;</span><br><span class="line">    vector&lt;int&gt; mvValidDeviceId;</span><br><span class="line">&#125;;</span><br><span class="line">#endif</span><br></pre></td></tr></table></figure></p>
+<p>对MPI进程进行封装，在Process类中包含一个DeviceProcessor对象。该类实现了initCUDA函数，用于实现进程与设备的绑定。下面对initCUDA()进行说明。<br>对于主进程来说，定义两个map，mapAvailableDevId用于存放当前节点可用的设备ID，mapProcId记录当前节点上要运行的进程号。子进程将他们的节点名称、可用设备数量、可用设备ID数组，发送给主进程，主进程在mapProcId中查找该节点，如果没有找到，那么将&lt;节点名称，可用GPU编号数组&gt;插入mapAvailableDevId，并将&lt;节点名，进程编号vec&gt;插入mapProcId。如果找到了，说明该节点可用的GPU编号已经有了，只需要将该进程编号插入mapProcId的进程数组即可。得到每个节点的运行进程数组和可用的设备ID数组后，主进程负责遍历进程数组，给每个进程分配一个设备，将设备编号发送给对应的进程。<br>对于子进程来说，将节点名称，该节点可用的设备数量和设备ID数组发送给主进程。然后等着接收主进程给分配的设备编号，调用setDeviceID()函数给进程绑定设备，再调用setDevice()函数真正绑定CUDA设备。<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line">//Process.h</span><br><span class="line">#include &quot;mpi.h&quot;</span><br><span class="line">#include &quot;DeviceInfo.h&quot;</span><br><span class="line">class Process</span><br><span class="line">&#123;</span><br><span class="line">public:</span><br><span class="line">    Process(MPI_Comm _comm);</span><br><span class="line">    bool initialized() const;</span><br><span class="line">    bool init(int argc = 0, char *argv[] = NULL);</span><br><span class="line">    int getId() const;</span><br><span class="line">    int getProcsNum() const;</span><br><span class="line">    const MPI_Comm&amp; getComm() const;</span><br><span class="line">    const char* getProcessorName() const;</span><br><span class="line">    bool isMaster() const;</span><br><span class="line">    bool initCuda();</span><br><span class="line">    </span><br><span class="line">private:</span><br><span class="line">    MPI_Comm m_mpiCommon;</span><br><span class="line">    int mnPId;</span><br><span class="line">    int mnTotalProcs;</span><br><span class="line">    string mstrProcName;</span><br><span class="line">    DeviceProcessor mDevice;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure></p>
+<p>Process类的实现<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br></pre></td><td class="code"><pre><span class="line">//Process.cpp</span><br><span class="line">#include &quot;Process.h&quot;</span><br><span class="line">#include &lt;map&gt;</span><br><span class="line">typedef vector&lt;int&gt; IntVect;</span><br><span class="line"></span><br><span class="line">Process::Process(MPI_Comm _comm):m_mpiCommon(_comm), mnPId(-1), mnTotalProcs(-1) &#123;&#125;</span><br><span class="line"></span><br><span class="line">bool Process::initialized() const</span><br><span class="line">&#123;</span><br><span class="line">    int mpiStarted;</span><br><span class="line">    MPI_Initialized(&amp;mpiStarted);</span><br><span class="line">    return static_cast&lt;bool&gt;(mpiStarted);   </span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">bool Process::init(int argc, char *argv[])</span><br><span class="line">&#123;</span><br><span class="line">    MPI_Comm_rank(m_mpiCommon, &amp;mnPId);</span><br><span class="line">    MPI_Comm_size(m_mpiCommon, &amp;mnTotalProcs);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    char aPrcrName[MPI_MAX_PROCESSOR_NAME];</span><br><span class="line">    int prcrNameLen;</span><br><span class="line">    MPI_Get_processor_name(aPrcrName, &amp;prcrNameLen);</span><br><span class="line">    mstrProcName.assign(aPrcrName, aPrcrName + prcrNameLen);</span><br><span class="line">    this-&gt;mDevice.setDeviceOn(mstrProcName);</span><br><span class="line">    return initCuda();</span><br><span class="line">&#125;</span><br><span class="line">int Process::getId() const</span><br><span class="line">&#123;</span><br><span class="line">    return mnPId;</span><br><span class="line">&#125;</span><br><span class="line">int Process::getProcsNum() const</span><br><span class="line">&#123;</span><br><span class="line">    return mnTotalProcs;</span><br><span class="line">&#125;</span><br><span class="line">const MPI_Comm&amp; Process::getComm() const</span><br><span class="line">&#123;</span><br><span class="line">    return m_mpiCommon;</span><br><span class="line">&#125;</span><br><span class="line">const char* Process::getProcessorName() const</span><br><span class="line">&#123;</span><br><span class="line">    return mstrProcName.c_str();</span><br><span class="line">&#125;</span><br><span class="line">bool Process::isMaster() const</span><br><span class="line">&#123;</span><br><span class="line">    return (mnPId == 0);</span><br><span class="line">&#125;</span><br><span class="line">bool Process::initCuda()</span><br><span class="line">&#123;</span><br><span class="line">    MPI_Status status;</span><br><span class="line">    if(!mDevice.Valid() &amp;&amp; !isMaster())</span><br><span class="line">    &#123;</span><br><span class="line">        return false;</span><br><span class="line">    &#125;</span><br><span class="line">    else</span><br><span class="line">    &#123;</span><br><span class="line">        if(this-&gt;isMaster())</span><br><span class="line">        &#123;</span><br><span class="line">            map&lt;string, IntVect&gt; mapAvailableDevId; //记录当前节点可用的设备ID</span><br><span class="line">            map&lt;string, IntVect&gt; mapProcId;         //记录当前节点的进程号</span><br><span class="line">            map&lt;string, IntVect&gt;::iterator iterProcId;</span><br><span class="line">            map&lt;string, IntVect&gt;::iterator iterAvailableDevId;</span><br><span class="line">            mapProcId.insert(pair&lt;string,IntVect&gt;(mstrProcName, IntVect()));</span><br><span class="line">            mapProcId.begin()-&gt;second.push_back(0);</span><br><span class="line">            mapAvailableDevId.insert(pair&lt;string,IntVect&gt;(mstrProcName, mDevice.getAllDevice()));</span><br><span class="line">            for(int i = 1; i &lt; mnTotalProcs; i++)</span><br><span class="line">            &#123;</span><br><span class="line">                char _cName_recv[100];</span><br><span class="line">                int _nDevCount_Recv;</span><br><span class="line"></span><br><span class="line">                MPI_Recv(_cName_recv, 100, MPI_CHAR, i, i, m_mpiCommon, &amp;status);</span><br><span class="line">                MPI_Recv(&amp;_nDevCount_Recv, 1, MPI_INT, i, 2*i, m_mpiCommon, &amp;status);</span><br><span class="line">                IntVect _vecAvailableDevId_Recv(_nDevCount_Recv);</span><br><span class="line">                MPI_Recv(&amp;_vecAvailableDevId_Recv[0], _nDevCount_Recv, MPI_INT, i, 3*i, m_mpiCommon, &amp;status);</span><br><span class="line">                string strName = _cName_recv;</span><br><span class="line"></span><br><span class="line">                iterProcId = mapProcId.find(strName);</span><br><span class="line">                if(iterProcId == mapProcId.end())</span><br><span class="line">                &#123;</span><br><span class="line">                    IntVect nvecPocesses;</span><br><span class="line">                    nvecPocesses.push_back(i);</span><br><span class="line">                    mapProcId.insert(pair&lt;string,IntVect&gt;(strName, nvecPocesses));</span><br><span class="line">                    nvecPocesses.clear();</span><br><span class="line">                    mapAvailableDevId.insert(pair&lt;string,IntVect&gt;(strName, _vecAvailableDevId_Recv));</span><br><span class="line">                &#125;</span><br><span class="line">                else</span><br><span class="line">                &#123;</span><br><span class="line">                    iterProcId-&gt;second.push_back(i);</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            iterAvailableDevId = mapAvailableDevId.begin();</span><br><span class="line">            for(iterProcId = mapProcId.begin(); iterProcId!=mapProcId.end(); iterProcId++)</span><br><span class="line">            &#123;</span><br><span class="line">                cout &lt;&lt; iterProcId-&gt;first &lt;&lt; &quot;进程为:&quot; &lt;&lt; &quot;\t&quot;;</span><br><span class="line">                IntVect vnPoID = iterProcId-&gt;second;</span><br><span class="line">                IntVect vnPoID2 = iterAvailableDevId-&gt;second;</span><br><span class="line">                for(int i = 0; i &lt; vnPoID.size(); i++)</span><br><span class="line">                &#123;</span><br><span class="line">                    cout &lt;&lt; vnPoID[i] &lt;&lt; &quot;,&quot;;</span><br><span class="line">                    int nSend = i % vnPoID2.size();</span><br><span class="line">                    if(vnPoID[i] != 0)</span><br><span class="line">                    &#123;</span><br><span class="line">                        MPI_Send(&amp;vnPoID2[nSend], 1, MPI_INT, vnPoID[i], 4 * vnPoID[i], m_mpiCommon);</span><br><span class="line">                    &#125;</span><br><span class="line">                    else</span><br><span class="line">                    &#123;</span><br><span class="line">                        mDevice.setDeviceID(vnPoID2[nSend]);</span><br><span class="line">                    &#125;</span><br><span class="line">                &#125;</span><br><span class="line">                cout &lt;&lt; endl;</span><br><span class="line">                cout &lt;&lt; iterProcId-&gt;first &lt;&lt; &quot;设备为:&quot; &lt;&lt; &quot;\t&quot;;</span><br><span class="line">                for(int i = 0; i &lt; vnPoID2.size(); i++)</span><br><span class="line">                &#123;</span><br><span class="line">                    cout &lt;&lt; vnPoID2[i] &lt;&lt; &quot;,&quot;;</span><br><span class="line">                &#125;</span><br><span class="line">                cout &lt;&lt; endl;</span><br><span class="line">                iterAvailableDevId++;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        else</span><br><span class="line">        &#123;</span><br><span class="line">            const char *name = mstrProcName.c_str();</span><br><span class="line">            MPI_Send(name, 100, MPI_CHAR, 0, mnPId, m_mpiCommon);</span><br><span class="line">            int nCount = mDevice.getAllDevice().size();</span><br><span class="line">            MPI_Send(&amp;nCount, 1, MPI_INT, 0, 2 * mnPId, m_mpiCommon);</span><br><span class="line">            MPI_Send(&amp;mDevice.getAllDevice()[0], nCount, MPI_INT, 0, 3*mnPId, m_mpiCommon);</span><br><span class="line">            int nRecv;</span><br><span class="line">            MPI_Recv(&amp;nRecv, 1, MPI_INT, 0, 4 * mnPId, m_mpiCommon, &amp;status);</span><br><span class="line">            cout &lt;&lt; &quot;进程&quot; &lt;&lt; mnPId &lt;&lt; &quot;的设备为:&quot; &lt;&lt; name &lt;&lt; &quot; &quot; &lt;&lt; nRecv &lt;&lt; &quot;\n&quot;; </span><br><span class="line">            mDevice.setDeviceID(nRecv);</span><br><span class="line">            mDevice.setDevice();</span><br><span class="line">        &#125;</span><br><span class="line">        return true;</span><br><span class="line">    &#125;   </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<p>最后做个测试，实现数据的接力传递<br><figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line">//jieli.cpp</span><br><span class="line">#include &lt;stdio.h&gt;</span><br><span class="line">#include &quot;mpi.h&quot;</span><br><span class="line">#include &quot;Process.h&quot;</span><br><span class="line"></span><br><span class="line">int main(int argc, char *argv[])</span><br><span class="line">&#123;</span><br><span class="line">    MPI_Init(&amp;argc, &amp;argv);</span><br><span class="line">    MPI_Comm comm;</span><br><span class="line">    comm = MPI_COMM_WORLD;</span><br><span class="line">    Process proc(comm);</span><br><span class="line">    proc.init(argc, argv);</span><br><span class="line">    int procSize = proc.getProcsNum();</span><br><span class="line">    int pId = proc.getId();</span><br><span class="line">    fprintf(stderr, &quot;%d (%d)\n&quot;,pId,procSize);</span><br><span class="line"></span><br><span class="line">    int value;</span><br><span class="line">    MPI_Status status;</span><br><span class="line">    char *filename = argv[1];</span><br><span class="line"></span><br><span class="line">    if (proc.getId()==0) &#123;</span><br><span class="line">        fprintf(stderr, &quot;\nPlease give new value=&quot;);</span><br><span class="line">        scanf(&quot;%d&quot;,&amp;value);</span><br><span class="line">        fprintf(stderr, &quot;%d read &lt;-&lt;- (%d)\n&quot;,pId,value);</span><br><span class="line">        /*必须至少有两个进程的时候 才能进行数据传递*/</span><br><span class="line">        if (procSize&gt;1) &#123;</span><br><span class="line">            MPI_Send(&amp;value, 1, MPI_INT, pId+1, 0, MPI_COMM_WORLD);</span><br><span class="line">            fprintf(stderr, &quot;%d send (%d)-&gt;-&gt; %d\n&quot;, pId,value,pId+1);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    else &#123;</span><br><span class="line">        MPI_Recv(&amp;value, 1, MPI_INT, pId-1, 0, MPI_COMM_WORLD, &amp;status);</span><br><span class="line">        fprintf(stderr, &quot;%d receive(%d)&lt;-&lt;- %d\n&quot;,pId, value, pId-1);</span><br><span class="line">        if (pId&lt;procSize-1) &#123;</span><br><span class="line">            MPI_Send(&amp;value, 1, MPI_INT, pId+1, 0, MPI_COMM_WORLD);</span><br><span class="line">            fprintf(stderr, &quot;%d send (%d)-&gt;-&gt; %d\n&quot;, pId, value, pId+1);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    MPI_Finalize();</span><br><span class="line">    return 0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></p>
+<h3 id="结果"><a href="#结果" class="headerlink" title="结果"></a>结果</h3><p>编译命令：<br>mpic++ jieli.cpp Process.cpp -L /usr/local/cuda-8.0/lib64 -lcudart -I /usr/local/cuda-8.0/include</p>
+<p>运行的时候用 mpirun -machinefile machinefile -n 6 ./a.out 就可以实现多节点多GPU的运算，在这个例子中没有真正的用到GPU做计算，只是证明了Process类编写正确。<br>下面是我的另外一个测试程序中GPU的分配情况，在该程序中开了5个进程，其中进程0为主进程，不参与运算，剩下的4个进程1,2,3,4,分别绑定一个节点上的一个GPU。<br><img src="/2019/04/07/多节点MPI-CUDA的程序中GPU与进程的绑定/4.png" alt="图片"></p>
+
+      
+    </div>
+
+    <div>
+      
+        
+
+      
+    </div>
+
+    <div>
+      
+        
+
+      
+    </div>
+
+    <div>
+      
+        
+
+      
+    </div>
+
+    <footer class="post-footer">
+      
+        <div class="post-tags">
+          
+            <a href="/tags/CUDA/" rel="tag"># CUDA</a>
+          
+            <a href="/tags/MPI/" rel="tag"># MPI</a>
+          
+            <a href="/tags/MPI-CUDA/" rel="tag"># MPI+CUDA</a>
+          
+        </div>
+      
+
+      
+        
+      
+
+      
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
+            
+              <a href="/2019/03/26/MPI的进程组和通信域/" rel="next" title="MPI的进程组和通信域">
+                <i class="fa fa-chevron-left"></i> MPI的进程组和通信域
+              </a>
+            
+          </div>
+
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
+            
+              <a href="/2019/04/27/Linux下用GDB调试MPI程序/" rel="prev" title="Linux下用GDB调试MPI程序">
+                Linux下用GDB调试MPI程序 <i class="fa fa-chevron-right"></i>
+              </a>
+            
+          </div>
+        </div>
+      
+
+      
+      
+    </footer>
+  </article>
+
+
+
+    <div class="post-spread">
+      
+    </div>
+  </div>
+
+
+          </div>
+          
+
+
+          
+  <div class="comments" id="comments">
+    
+  </div>
+
+
+        </div>
+        
+          
+  
+  <div class="sidebar-toggle">
+    <div class="sidebar-toggle-line-wrap">
+      <span class="sidebar-toggle-line sidebar-toggle-line-first"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-middle"></span>
+      <span class="sidebar-toggle-line sidebar-toggle-line-last"></span>
+    </div>
+  </div>
+
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-inner">
+
+      
+
+      
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            Table of Contents
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview">
+            Overview
+          </li>
+        </ul>
+      
+
+      <section class="site-overview sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+          <img class="site-author-image" itemprop="image" src="/image/fly.jpg" alt>
+          <p class="site-author-name" itemprop="name"></p>
+           
+              <p class="site-description motion-element" itemprop="description">From zero to hero</p>
+          
+        </div>
+        <nav class="site-state motion-element">
+
+          
+            <div class="site-state-item site-state-posts">
+              <a href="/archives">
+                <span class="site-state-item-count">59</span>
+                <span class="site-state-item-name">posts</span>
+              </a>
+            </div>
+          
+
+          
+            
+            
+            <div class="site-state-item site-state-categories">
+              <a href="/categories/index.html">
+                <span class="site-state-item-count">9</span>
+                <span class="site-state-item-name">categories</span>
+              </a>
+            </div>
+          
+
+          
+            
+            
+            <div class="site-state-item site-state-tags">
+              <a href="/tags/index.html">
+                <span class="site-state-item-count">44</span>
+                <span class="site-state-item-name">tags</span>
+              </a>
+            </div>
+          
+
+        </nav>
+
+        
+
+        <div class="links-of-author motion-element">
+          
+            
+              <span class="links-of-author-item">
+                <a href="https://github.com/silence-inner-peace" target="_blank" title="github">
+                  
+                    <i class="fa fa-fw fa-globe"></i>
+                  
+                  github
+                </a>
+              </span>
+            
+              <span class="links-of-author-item">
+                <a href="https://www.zhihu.com/people/yuan-hong-94-43/activities" target="_blank" title="zhihu">
+                  
+                    <i class="fa fa-fw fa-globe"></i>
+                  
+                  zhihu
+                </a>
+              </span>
+            
+          
+        </div>
+
+        
+        
+
+        
+        
+          <div class="links-of-blogroll motion-element links-of-blogroll-inline">
+            <div class="links-of-blogroll-title">
+              <i class="fa  fa-fw fa-globe"></i>
+              Links
+            </div>
+            <ul class="links-of-blogroll-list">
+              
+                <li class="links-of-blogroll-item">
+                  <a href="https://www.github.com" title="Github" target="_blank">Github</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="http://www.imooc.com" title="imooc" target="_blank">imooc</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="https://www.ted.com" title="TED" target="_blank">TED</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="https://www.nowcoder.com" title="nowcoder" target="_blank">nowcoder</a>
+                </li>
+              
+                <li class="links-of-blogroll-item">
+                  <a href="http://www.bbc.co.uk/learningenglish/english/features/6-minute-english" title="BBC" target="_blank">BBC</a>
+                </li>
+              
+            </ul>
+          </div>
+        
+        <iframe frameborder="no" border="0" marginwidth="0" marginheight="0" width="330" height="86" src="//music.163.com/outchain/player?type=2&id=110167&auto=0&height=66"></iframe>
+        
+
+
+      </section>
+
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#问题描述"><span class="nav-number">1.</span> <span class="nav-text">问题描述</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#解决方案"><span class="nav-number">2.</span> <span class="nav-text">解决方案</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#结果"><span class="nav-number">3.</span> <span class="nav-text">结果</span></a></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
+      
+
+      
+
+    </div>
+  </aside>
+
+
+        
+      </div>
+    </main>
+
+    <footer id="footer" class="footer">
+      <div class="footer-inner">
+        <div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2020</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder"></span>
+</div>
+
+
+<div class="powered-by">
+  Powered by <a class="theme-link" href="https://hexo.io">Hexo</a>
+</div>
+
+<div class="theme-info">
+  Theme -
+  <a class="theme-link" href="https://github.com/iissnan/hexo-theme-next">
+    NexT.Pisces
+  </a>
+</div>
+
+
+        
+
+        
+      </div>
+    </footer>
+
+    
+      <div class="back-to-top">
+        <i class="fa fa-arrow-up"></i>
+        
+      </div>
+    
+
+  </div>
+
+  
+
+<script type="text/javascript">
+  if (Object.prototype.toString.call(window.Promise) !== '[object Function]') {
+    window.Promise = null;
+  }
+</script>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <script type="text/javascript" src="/lib/jquery/index.js?v=2.1.3"></script>
+
+  
+  <script type="text/javascript" src="/lib/fastclick/lib/fastclick.min.js?v=1.0.6"></script>
+
+  
+  <script type="text/javascript" src="/lib/jquery_lazyload/jquery.lazyload.js?v=1.9.7"></script>
+
+  
+  <script type="text/javascript" src="/lib/velocity/velocity.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/lib/velocity/velocity.ui.min.js?v=1.2.1"></script>
+
+  
+  <script type="text/javascript" src="/lib/fancybox/source/jquery.fancybox.pack.js?v=2.1.5"></script>
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/utils.js?v=5.1.1"></script>
+
+  <script type="text/javascript" src="/js/src/motion.js?v=5.1.1"></script>
+
+
+
+  
+  
+
+
+  <script type="text/javascript" src="/js/src/affix.js?v=5.1.1"></script>
+
+  <script type="text/javascript" src="/js/src/schemes/pisces.js?v=5.1.1"></script>
+
+
+
+  
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.1"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.1"></script>
+
+
+
+  
+
+
+  <script type="text/javascript" src="/js/src/bootstrap.js?v=5.1.1"></script>
+
+
+
+  
+
+
+  
+
+
+
+
+	
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+
+
+
+
+
+  
+
+
+
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+</body>
+</html>
